@@ -1,5 +1,5 @@
 use git2::Repository;
-use chrono::{Datelike, NaiveDate, NaiveDateTime, Utc, Weekday};
+use chrono::{Datelike, NaiveDate, TimeZone, Utc, Weekday};
 use crossterm::{
     execute,
     style::{Color, PrintStyledContent, Stylize},
@@ -7,7 +7,9 @@ use crossterm::{
 };
 use std::collections::HashMap;
 use std::env;
-use std::io::{stdout, Write};
+use std::io::stdout;
+
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get command-line arguments
@@ -42,8 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let oid = oid_result?;
         let commit = repo.find_commit(oid)?;
         let timestamp = commit.time().seconds();
-        let datetime = NaiveDateTime::from_timestamp_opt(timestamp, 0).unwrap();
-        let date = datetime.date();
+        let datetime = Utc.timestamp_opt(timestamp, 0).single().ok_or("Invalid timestamp")?;
+        let date = datetime.date_naive();
         if date.year() == year {
             *commit_counts.entry(date).or_insert(0) += 1;
         }
