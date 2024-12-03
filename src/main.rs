@@ -1,3 +1,4 @@
+use clap::{Parser, Subcommand};
 use git2::Repository;
 use chrono::{Datelike, NaiveDate, TimeZone, Utc, Weekday};
 use crossterm::{
@@ -9,27 +10,25 @@ use std::collections::HashMap;
 use std::env;
 use std::io::stdout;
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    repo: Option<String>,
+
+    #[arg(short, long)]
+    year: Option<i32>
+}
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Get command-line arguments
-    let args: Vec<String> = env::args().collect();
-    let repo_path = if args.len() > 1 {
-        &args[1]
-    } else {
-        "."
-    };
+    let args = Args::parse();
 
-    // Optional year argument
-    let specified_year = if args.len() > 2 {
-        args[2].parse::<i32>().ok()
-    } else {
-        None
-    };
+    let repo_path = args.repo.unwrap_or_else(|| ".".to_string());
+    let year = args.year.unwrap_or_else(|| Utc::today().year());
 
-    // Use the specified year or default to the current year
-    let current_year = Utc::now().year();
-    let year = specified_year.unwrap_or(current_year);
+    println!("Repo: {}", repo_path);
+    println!("Year: {}", year);
 
     // Open the specified Git repository
     let repo = Repository::open(repo_path)?;
