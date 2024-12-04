@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use git2::Repository;
 use chrono::{Datelike, NaiveDate, TimeZone, Utc, Weekday};
 use crossterm::{
@@ -7,7 +7,6 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use std::collections::HashMap;
-use std::env;
 use std::io::stdout;
 
 #[derive(Parser)]
@@ -20,6 +19,23 @@ struct Args {
     year: Option<i32>
 }
 
+fn adjust_start_and_end_dates(year: i32, start_date: &NaiveDate, end_date: &NaiveDate) -> (NaiveDate, NaiveDate) {
+    // Generate dates for the specified year
+
+    // Adjust start_date to the nearest previous Sunday
+    let mut adjusted_start_date = *start_date;
+    while adjusted_start_date.weekday() != Weekday::Sun {
+        adjusted_start_date -= chrono::Duration::days(1);
+    }
+
+    // Adjust end_date to the nearest next Saturday
+    let mut adjusted_end_date = *end_date;
+    while adjusted_end_date.weekday() != Weekday::Sat {
+        adjusted_end_date += chrono::Duration::days(1);
+    }
+
+    return (adjusted_start_date, adjusted_end_date);
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -50,21 +66,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Generate dates for the specified year
     let start_date = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
     let end_date = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
-
-    // Adjust start_date to the nearest previous Sunday
-    let mut adjusted_start_date = start_date;
-    while adjusted_start_date.weekday() != Weekday::Sun {
-        adjusted_start_date -= chrono::Duration::days(1);
-    }
-
-    // Adjust end_date to the nearest next Saturday
-    let mut adjusted_end_date = end_date;
-    while adjusted_end_date.weekday() != Weekday::Sat {
-        adjusted_end_date += chrono::Duration::days(1);
-    }
+    let (adjusted_start_date, adjusted_end_date) = adjust_start_and_end_dates(year, &start_date, &end_date);
 
     // Collect dates into weeks and keep track of month changes
     let mut weeks: Vec<Vec<Option<NaiveDate>>> = Vec::new();
