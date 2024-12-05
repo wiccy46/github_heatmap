@@ -4,12 +4,13 @@ use chrono::{Datelike, NaiveDate, TimeZone, Utc, Weekday};
 use crossterm::{
     execute,
     style::{Color, PrintStyledContent, Stylize},
-    terminal::{Clear, ClearType},
 };
-use std::{collections::HashMap, ptr::addr_of};
+use std::collections::HashMap;
 use std::io::stdout;
 
 const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const EMPTY_LABEL: &str = "  ";
+const DAYS_IN_WEEK: usize = 7;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -21,7 +22,7 @@ struct Args {
     year: Option<i32>
 }
 
-fn adjust_start_and_end_dates(year: i32, start_date: &NaiveDate, end_date: &NaiveDate) -> (NaiveDate, NaiveDate) {
+fn adjust_start_and_end_dates(start_date: &NaiveDate, end_date: &NaiveDate) -> (NaiveDate, NaiveDate) {
     // Adjust start_date to the nearest previous Sunday
     let mut adjusted_start_date = *start_date;
     while adjusted_start_date.weekday() != Weekday::Sun {
@@ -76,7 +77,7 @@ fn organize_weeks(
     while date <= *adjusted_end_date {
         let mut week = Vec::new();
         let mut week_month = 0;
-        for _ in 0..7 {
+        for _ in 0..DAYS_IN_WEEK {
             if date >= *start_date && date <= *end_date {
                 week.push(Some(date));
                 if week_month == 0 {
@@ -96,28 +97,21 @@ fn organize_weeks(
     return (weeks, week_months);
 }
 
+fn get_commit_color(count: u32) -> Color {
+    match count {
+        0 => Color::DarkGrey,
+        1 => Color::Green,
+        2..=3 => Color::DarkGreen,
+        4..=5 => Color::Rgb { r: 0, g: 255, b: 0 }, // Bright Green
+        _ => Color::White, // For very high commit counts
+    }
+}
 
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
-    let repo_path = args.repo.unwrap_or_else(|| ".".to_string());
-    let year = args.year.unwrap_or_else(|| Utc::today().year());
-
-    println!("Repo: {}", repo_path);
-    println!("Year: {}", year);
-
-    // Open the specified Git repository
-    let repo = Repository::open(repo_path)?;
-    let commit_counts = collect_commit_counts(&repo, year)?;
-
-
-    let start_date = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
-    let end_date = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
-    let (adjusted_start_date, adjusted_end_date) = 
-        adjust_start_and_end_dates(year, &start_date, &end_date);
-
-    let (weeks, week_months) = organize_weeks(&adjusted_start_date, &adjusted_end_date, &start_date, &end_date);
-
+fn print_heatmap(
+    weeks: &Vec<Vec<Option<NaiveDate>>>,
+    week_months: &Vec<u32>,
+    commit_counts: &HashMap<NaiveDate, u32>
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut month_labels: Vec<String> = vec!["  ".to_string(); weeks.len()];
     let mut last_month = 0;
     for i in 0..weeks.len() {
@@ -129,17 +123,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Clear the terminal
-    execute!(stdout(), Clear(ClearType::All))?;
-
     // Print month labels
+    const MONTH_SEPARATOR: &str = "|";
     print!("     "); // Align with weekday labels
     for (i, label) in month_labels.iter().enumerate() {
         print!("{}", label);
         if i < weeks.len() - 1 {
             // Check if month changes after this week
             if week_months[i] != week_months[i + 1] && week_months[i + 1] != 0 {
-                print!("|"); // Separator between months
+                print!("{}", MONTH_SEPARATOR); // Separator between months
             } else {
                 print!(" "); // Space between weeks
             }
@@ -147,31 +139,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!();
 
-
     // Display the heatmap
     for (weekday_index, weekday_label) in WEEKDAYS.iter().enumerate() {
         // Print weekday label with spacing
-        print!("{:<4}", weekday_label); // Width 4 to include space
+        print!("{:<4}", weekday_label);
 
-        // Print each day's cell with gaps between days
         for i in 0..weeks.len() {
             if let Some(Some(date)) = weeks[i].get(weekday_index) {
                 let count = *commit_counts.get(&date).unwrap_or(&0);
 
                 // Adjusted color scheme using shades of green
-                let color = match count {
-                    0 => Color::DarkGrey,
-                    1 => Color::Green,
-                    2..=3 => Color::DarkGreen,
-                    4..=5 => Color::Rgb { r: 0, g: 255, b: 0 }, // Bright Green
-                    _ => Color::White, // For very high commit counts
-                };
+                let color = get_commit_color(count);
 
-                let styled_cell = "  ".on(color); // Two spaces with background color
+                let styled_cell = EMPTY_LABEL.on(color);
                 execute!(stdout(), PrintStyledContent(styled_cell))?;
             } else {
                 // No date (outside the specified year)
-                print!("  "); // Two spaces
+                let styled_cell = EMPTY_LABEL.on(Color::DarkGrey);
+                execute!(stdout(), PrintStyledContent(styled_cell))?;
             }
 
             if i < weeks.len() - 1 {
@@ -188,6 +173,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Add a blank line to create a gap between weekdays
         println!();
     }
+
+    Ok(())
+}
+
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
+    let repo_path = args.repo.unwrap_or_else(|| ".".to_string());
+    let year = args.year.unwrap_or_else(|| Utc::now().date_naive().year());
+
+    let repo = Repository::open(repo_path)?;
+    let commit_counts = collect_commit_counts(&repo, year)?;
+
+
+    let start_date = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
+    let end_date = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
+    let (adjusted_start_date, adjusted_end_date) = 
+        adjust_start_and_end_dates(&start_date, &end_date);
+
+    let (weeks, week_months) = 
+        organize_weeks(&adjusted_start_date, &adjusted_end_date, &start_date, &end_date);
+    
+    print_heatmap(&weeks, &week_months, &commit_counts)?;
 
     Ok(())
 }
