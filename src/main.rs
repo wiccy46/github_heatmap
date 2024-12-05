@@ -6,7 +6,7 @@ use crossterm::{
     style::{Color, PrintStyledContent, Stylize},
     terminal::{Clear, ClearType},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, ptr::addr_of};
 use std::io::stdout;
 
 const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -61,35 +61,23 @@ fn collect_commit_counts(
     Ok(commit_counts)
 }
 
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
-    let repo_path = args.repo.unwrap_or_else(|| ".".to_string());
-    let year = args.year.unwrap_or_else(|| Utc::today().year());
-
-    println!("Repo: {}", repo_path);
-    println!("Year: {}", year);
-
-    // Open the specified Git repository
-    let repo = Repository::open(repo_path)?;
-
-    let commit_counts = collect_commit_counts(&repo, year)?;
-
-
-    let start_date = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
-    let end_date = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
-    let (adjusted_start_date, adjusted_end_date) = adjust_start_and_end_dates(year, &start_date, &end_date);
+fn organize_weeks(
+    adjusted_start_date: &NaiveDate,
+    adjusted_end_date: &NaiveDate,
+    start_date: &NaiveDate,
+    end_date: &NaiveDate
+) -> (Vec<Vec<Option<NaiveDate>>>, Vec<u32>) {
 
     // Collect dates into weeks and keep track of month changes
     let mut weeks: Vec<Vec<Option<NaiveDate>>> = Vec::new();
     let mut week_months: Vec<u32> = Vec::new(); // Month of the first day in each week
-    let mut date = adjusted_start_date;
+    let mut date = *adjusted_start_date;
 
-    while date <= adjusted_end_date {
+    while date <= *adjusted_end_date {
         let mut week = Vec::new();
         let mut week_month = 0;
         for _ in 0..7 {
-            if date >= start_date && date <= end_date {
+            if date >= *start_date && date <= *end_date {
                 week.push(Some(date));
                 if week_month == 0 {
                     // Set the week_month to the month of the first valid date in the week
@@ -105,6 +93,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Prepare month labels aligned to the first day of the month
+    return (weeks, week_months);
+}
+
+
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
+    let repo_path = args.repo.unwrap_or_else(|| ".".to_string());
+    let year = args.year.unwrap_or_else(|| Utc::today().year());
+
+    println!("Repo: {}", repo_path);
+    println!("Year: {}", year);
+
+    // Open the specified Git repository
+    let repo = Repository::open(repo_path)?;
+    let commit_counts = collect_commit_counts(&repo, year)?;
+
+
+    let start_date = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
+    let end_date = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
+    let (adjusted_start_date, adjusted_end_date) = 
+        adjust_start_and_end_dates(year, &start_date, &end_date);
+
+    let (weeks, week_months) = organize_weeks(&adjusted_start_date, &adjusted_end_date, &start_date, &end_date);
+
     let mut month_labels: Vec<String> = vec!["  ".to_string(); weeks.len()];
     let mut last_month = 0;
     for i in 0..weeks.len() {
