@@ -1,4 +1,4 @@
-# GitHub Heatmap
+# GitHub Heatmap on Your Terminal
 
 GitHub Heatmap is a command-line tool that generates a heatmap of Git commit activity for a specified year. It visualizes the number of commits per day in a calendar-like format, similar to the contribution graph on GitHub profiles.
 
